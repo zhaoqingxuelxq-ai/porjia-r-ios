@@ -1,0 +1,34 @@
+name: Build IPA
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Archive
+        run: |
+          xcodebuild -scheme PorjiaR -project PorjiaR.xcodeproj \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/PorjiaR.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            clean archive
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/PorjiaR.xcarchive \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath build/ipa \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Verify
+        run: ls -la build/ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PorjiaR-IPA
+          path: build/ipa/*.ipa
+          retention-days: 90
