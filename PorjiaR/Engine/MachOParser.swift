@@ -241,23 +241,185 @@ struct MachOParser {
     }
 }
 
-/// zlib/deflate 解压（用系统 Compression 框架，iOS 标准库的一部分）。
-import Compression
+/// raw DEFLATE 解压（RFC 1951）——纯 Swift 实现，不依赖 Compression 框架。
+/// ZIP 条目用的是 raw deflate（无 zlib 头），这里直接解。
+private struct BitReader {
+    let bytes: [UInt8]
+    var bytePos = 0
+    var bitPos = 0
 
-enum Inflate {
-    static func decompress(_ data: Data, expected: Int) -> Data? {
-        let src = [UInt8](data)
-        let dstCap = max(expected, 1)
-        var dst = [UInt8](repeating: 0, count: dstCap)
-        let got = dst.withUnsafeMutableBytes { dstBuf -> Int in
-            src.withUnsafeBytes { srcBuf -> Int in
-                // ZIP 条目用的是 raw deflate（无 zlib 头），Swift 导入的常量名为 compression_deflate
-                compression_decode_buffer(dstBuf.baseAddress!, dstCap,
-                                          srcBuf.baseAddress!, src.count,
-                                          nil, compression_deflate)
+    mutating func read(_ n: Int) -> Int {
+        var v = 0
+        for i in 0..<n {
+            if bytePos >= bytes.count { return -1 }
+            let b = Int((bytes[bytePos] >> bitPos) & 1)
+            v |= b << i
+            bitPos += 1
+            if bitPos == 8 { bitPos = 0; bytePos += 1 }
+        }
+        return v
+    }
+
+    mutating func alignByte() {
+        if bitPos != 0 { bitPos = 0; bytePos += 1 }
+    }
+}
+
+private struct HuffmanTable {
+    var entries: [(code: Int, length: Int, symbol: Int)] = []
+
+    init(lengths: [Int]) {
+        var counts = [Int](repeating: 0, count: 16)
+        for l in lengths where l > 0 && l < 16 { counts[l] += 1 }
+        var next = [Int](repeating: 0, count: 16)
+        var code = 0
+        for bits in 1..<16 {
+            code = (code + counts[bits - 1]) << 1
+            next[bits] = code
+        }
+        for (sym, len) in lengths.enumerated() where len > 0 && len < 16 {
+            entries.append((next[len], len, sym))
+            next[len] += 1
+        }
+    }
+
+    func decode(_ r: inout BitReader) -> Int? {
+        var code = 0
+        for len in 1..<16 {
+            let b = r.read(1)
+            if b < 0 { return nil }
+            code |= b << (len - 1)
+            for e in entries where e.length == len && e.code == code {
+                return e.symbol
             }
         }
-        guard got > 0 else { return nil }
-        return Data(dst[0..<got])
+        return nil
+    }
+}
+
+enum Inflate {
+    private static let lenBase = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,
+                                  35,43,51,59,67,83,99,115,131,163,195,227,258]
+    private static let lenExtra = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,
+                                   3,3,3,3,4,4,4,4,5,5,5,5,0]
+    private static let distBase = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,
+                                   129,193,257,385,513,769,1025,1537,2049,
+                                   3073,4097,6145,8193,12289,16385,24577]
+    private static let distExtra = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,
+                                    7,7,8,8,9,9,10,10,11,11,12,12,13,13]
+    private static let clOrder = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]
+
+    static func decompress(_ data: Data, expected: Int) -> Data? {
+        var r = BitReader(bytes: [UInt8](data))
+        var out = [UInt8]()
+        out.reserveCapacity(expected > 0 ? expected : 1024)
+        return decompressBlocks(&r, out: &out)
+    }
+
+    private static func decompressBlocks(_ r: inout BitReader, out: inout [UInt8]) -> Data? {
+        var isFinal = false
+        while !isFinal {
+            let f = r.read(1)
+            guard f >= 0 else { return nil }
+            isFinal = f == 1
+            let t0 = r.read(1), t1 = r.read(1)
+            guard t0 >= 0, t1 >= 0 else { return nil }
+            let type = t0 | (t1 << 1)
+            if type == 0 {
+                r.alignByte()
+                let len = r.read(16), nlen = r.read(16)
+                guard len >= 0, nlen >= 0 else { return nil }
+                guard (len ^ nlen) == 0xFFFF else { return nil }
+                for _ in 0..<len {
+                    let b = r.read(8)
+                    guard b >= 0 else { return nil }
+                    out.append(UInt8(b))
+                }
+            } else if type == 1 {
+                guard decodeCompressed(&r, lit: fixedLit(), dist: fixedDist(), out: &out) else { return nil }
+            } else if type == 2 {
+                guard let tables = dynamicTables(&r) else { return nil }
+                guard decodeCompressed(&r, lit: tables.0, dist: tables.1, out: &out) else { return nil }
+            } else {
+                return nil
+            }
+        }
+        return Data(out)
+    }
+
+    private static func fixedLit() -> HuffmanTable {
+        var lengths = [Int](repeating: 0, count: 288)
+        for i in 0...143 { lengths[i] = 8 }
+        for i in 144...255 { lengths[i] = 9 }
+        for i in 256...279 { lengths[i] = 7 }
+        for i in 280...287 { lengths[i] = 8 }
+        return HuffmanTable(lengths: lengths)
+    }
+
+    private static func fixedDist() -> HuffmanTable {
+        HuffmanTable(lengths: [Int](repeating: 5, count: 32))
+    }
+
+    private static func dynamicTables(_ r: inout BitReader) -> (HuffmanTable, HuffmanTable)? {
+        let hl = r.read(5), hd = r.read(5), hc = r.read(4)
+        guard hl >= 0, hd >= 0, hc >= 0 else { return nil }
+        let nLit = hl + 257, nDist = hd + 1, nCode = hc + 4
+        guard nLit <= 288, nDist <= 32 else { return nil }
+        var cl = [Int](repeating: 0, count: 19)
+        for i in 0..<nCode {
+            let v = r.read(3)
+            guard v >= 0 else { return nil }
+            cl[clOrder[i]] = v
+        }
+        let clTable = HuffmanTable(lengths: cl)
+        var all = [Int]()
+        while all.count < nLit + nDist {
+            guard let sym = clTable.decode(&r) else { return nil }
+            if sym <= 15 {
+                all.append(sym)
+            } else if sym == 16 {
+                let rep = r.read(2)
+                guard rep >= 0, let last = all.last else { return nil }
+                all.append(contentsOf: [Int](repeating: last, count: rep + 3))
+            } else if sym == 17 {
+                let rep = r.read(3)
+                guard rep >= 0 else { return nil }
+                all.append(contentsOf: [Int](repeating: 0, count: rep + 3))
+            } else if sym == 18 {
+                let rep = r.read(7)
+                guard rep >= 0 else { return nil }
+                all.append(contentsOf: [Int](repeating: 0, count: rep + 11))
+            } else { return nil }
+        }
+        guard all.count >= nLit + nDist else { return nil }
+        return (HuffmanTable(lengths: Array(all[0..<nLit])),
+                HuffmanTable(lengths: Array(all[nLit..<(nLit + nDist)])))
+    }
+
+    private static func decodeCompressed(_ r: inout BitReader, lit: HuffmanTable,
+                                         dist: HuffmanTable, out: inout [UInt8]) -> Bool {
+        while true {
+            guard let sym = lit.decode(&r) else { return false }
+            if sym < 256 {
+                out.append(UInt8(sym))
+            } else if sym == 256 {
+                return true
+            } else if sym >= 257 && sym <= 285 {
+                let idx = sym - 257
+                guard idx < lenBase.count else { return false }
+                let extra = lenExtra[idx]
+                let e = extra > 0 ? r.read(extra) : 0
+                guard e >= 0 else { return false }
+                let length = lenBase[idx] + e
+                guard let dsym = dist.decode(&r), dsym >= 0, dsym < distBase.count else { return false }
+                let d = distExtra[dsym] > 0 ? r.read(distExtra[dsym]) : 0
+                guard d >= 0 else { return false }
+                let distance = distBase[dsym] + d
+                guard distance > 0, distance <= out.count else { return false }
+                for _ in 0..<length { out.append(out[out.count - distance]) }
+            } else {
+                return false
+            }
+        }
     }
 }
