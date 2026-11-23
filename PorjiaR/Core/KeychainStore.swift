@@ -67,6 +67,6 @@ final class KeychainStore {
     func removeAll() -> Bool {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service] as [String: Any]
-        SecItemDelete(q as CFDictionary) == errSecSuccess
+        return SecItemDelete(q as CFDictionary) == errSecSuccess
     }
 }
