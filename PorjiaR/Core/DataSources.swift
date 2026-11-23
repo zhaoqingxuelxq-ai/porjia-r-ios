@@ -58,6 +58,43 @@ final class DataSources {
         return rows.sorted { $0.modelCount > $1.modelCount }
     }
 
+    /// 单个 provider 原始字典（ModelClient 构造路由用）
+    func provider(_ id: String) -> [String: Any]? { providers[id] as? [String: Any] }
+
+    /// provider 声明的 API Key 环境变量名（可能多个，取可配的）
+    func envKeys(_ id: String) -> [String] {
+        guard let p = provider(id) else { return [] }
+        if let arr = p["env"] as? [String] { return arr }
+        if let s = p["env"] as? String { return [s] }
+        return []
+    }
+
+    /// 模型能力结构（UI 徽标与工具调用开关的数据源）
+    struct ModelInfo: Identifiable {
+        let id: String
+        let name: String
+        let reasoning: Bool
+        let toolCall: Bool
+        let structured: Bool
+        let family: String
+    }
+
+    func models(of providerID: String) -> [ModelInfo] {
+        guard let p = provider(providerID), let mm = p["models"] as? [String: Any] else { return [] }
+        var out: [ModelInfo] = []
+        for (mid, raw) in mm {
+            guard let m = raw as? [String: Any] else { continue }
+            out.append(ModelInfo(
+                id: m["id"] as? String ?? mid,
+                name: m["name"] as? String ?? mid,
+                reasoning: (m["reasoning"] as? Bool) ?? false,
+                toolCall: (m["tool_call"] as? Bool) ?? false,
+                structured: (m["structured_output"] as? Bool) ?? false,
+                family: m["family"] as? String ?? ""))
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     func ruleContent(_ file: String) -> String {
         guard let dir = Bundle.main.url(forResource: "Rules", withExtension: nil) else { return "" }
         let u = dir.appendingPathComponent(file)
