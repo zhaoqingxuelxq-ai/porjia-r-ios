@@ -24,21 +24,23 @@ struct BreakerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // 目标选择
-                    GroupBox("分析目标") {
+                    Card {
+                        SectionTitle(icon: "doc.badge.gearshape", title: "分析目标")
                         HStack {
-                            Image(systemName: "doc.badge.gearshape").foregroundColor(.red)
                             VStack(alignment: .leading) {
                                 Text(targetName).font(.subheadline.weight(.semibold))
-                                Text(fileData == nil ? "从文件 App 导入 IPA 或 Mach-O" : "\(fileData!.count) 字节已载入内存")
-                                    .font(.caption).foregroundColor(.secondary)
+                                Text(fileData == nil ? "从文件 App 导入 IPA 或 Mach-O" : "\(formatBytes(fileData!.count)) 已载入")
+                                    .font(.caption).foregroundColor(Theme.text2)
                             }
                             Spacer()
                             Button("导入") { isImporting = true }
+                                .buttonStyle(.bordered).tint(Theme.brand)
                         }
                     }
 
                     // 命令选择
-                    GroupBox("引擎命令") {
+                    Card {
+                        SectionTitle(icon: "hammer.fill", title: "引擎命令")
                         VStack(alignment: .leading, spacing: 10) {
                             Picker("命令", selection: $command) {
                                 ForEach(commands, id: \.self) { Text($0).tag($0) }
@@ -67,32 +69,28 @@ struct BreakerView: View {
                                     .textFieldStyle(.roundedBorder).autocapitalization(.none)
                             }
 
-                            Button {
+                            PrimaryButton(title: "执行 \(command)", icon: "play.fill",
+                                          busy: busy, disabled: fileData == nil) {
                                 runCommand()
-                            } label: {
-                                HStack {
-                                    if busy { ProgressView() }
-                                    Text(busy ? "执行中…" : "执行 \(command)")
-                                }.frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent).tint(.red)
-                            .disabled(fileData == nil || busy)
                         }
                     }
 
                     // SOP
-                    GroupBox("破解标准流程 SOP") {
+                    Card {
+                        SectionTitle(icon: "list.number", title: "破解标准流程 SOP", tint: .orange)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("1 · auth 判授权位置：server=本地无解转抓包；local=继续")
                             Text("2 · gate 定位校验点候选（符号 + 字符串启发式）")
                             Text("3 · patch 等长替换：先 dry-run，确认后勾选写入，自动 .bak 备份")
                             Text("4 · verify 校验字节落地；重启/联网后复查是否保持")
                             Text("5 · report 生成逆向四件套 Markdown")
-                        }.font(.caption).foregroundColor(.secondary)
+                        }.font(.caption).foregroundColor(Theme.text2)
                     }
 
                     // 结果
-                    GroupBox("执行结果") {
+                    Card {
+                        SectionTitle(icon: "terminal", title: "执行结果", tint: .purple)
                         ScrollView {
                             Text(result.isEmpty ? "—" : result)
                                 .font(.system(.caption, design: .monospaced))
@@ -142,36 +140,51 @@ struct BreakerView: View {
 
     private func runCommand() {
         guard let d = fileData else { return }
+        // BUGFIX: 同步执行时 busy=true 被同一 runloop 内的 defer 立即抵消，UI 永远看不到"执行中"。
+        // 改为后台执行 + 主线程回写，大文件（129MB）也不会卡住界面。
         busy = true
-        defer { busy = false }
-        let eng = BreakerEngine.shared
-        switch command {
-        case "info":
-            result = eng.info(d, name: targetName).jsonString
-        case "symbols":
-            result = eng.symbols(d, pattern: pattern.isEmpty ? nil : pattern).jsonString
-        case "strings":
-            result = eng.strings(d, pattern: pattern.isEmpty ? nil : pattern).jsonString
-        case "gate":
-            result = eng.gate(d, name: targetName).jsonString
-        case "auth":
-            result = eng.auth(d, name: targetName).jsonString
-        case "patch":
-            guard let u = targetURL else { result = "需要先导入可写目标"; return }
-            result = eng.patch(file: u, offsetStr: offset, oldHex: oldHex,
-                               newHex: newHex, apply: applyPatch).jsonString
-        case "verify":
-            guard let u = targetURL else { result = "需要先导入目标"; return }
-            result = eng.verify(file: u, offsetStr: offset, expectHex: newHex).jsonString
-        case "report":
-            let auth = eng.auth(d, name: targetName)
-            let v = auth.data["verdict"] as? String ?? "待判定"
-            result = eng.report(target: targetName, auth: v,
-                                gate: "先跑 gate 定位校验点",
-                                patch: "先跑 patch（dry-run → --apply）",
-                                verify: "先跑 verify 校验字节")
-        default:
-            result = "未知命令"
+        result = ""
+        let cmd = command, pat = pattern, off = offset, old = oldHex, new = newHex
+        let apply = applyPatch, name = targetName, url = targetURL
+        DispatchQueue.global(qos: .userInitiated).async {
+            let eng = BreakerEngine.shared
+            let out: String
+            switch cmd {
+            case "info": out = eng.info(d, name: name).jsonString
+            case "symbols": out = eng.symbols(d, pattern: pat.isEmpty ? nil : pat).jsonString
+            case "strings": out = eng.strings(d, pattern: pat.isEmpty ? nil : pat).jsonString
+            case "gate": out = eng.gate(d, name: name).jsonString
+            case "auth": out = eng.auth(d, name: name).jsonString
+            case "patch":
+                guard let u = url else { out = "需要先导入可写目标"; break }
+                // BUGFIX: fileImporter 给的 security scope 已在 loadTarget defer 里释放，
+                // patch 写文件前必须重新获取，否则写入失败。
+                let accessed = u.startAccessingSecurityScopedResource()
+                defer { if accessed { u.stopAccessingSecurityScopedResource() } }
+                out = eng.patch(file: u, offsetStr: off, oldHex: old,
+                                newHex: new, apply: apply).jsonString
+            case "verify":
+                guard let u = url else { out = "需要先导入目标"; break }
+                let accessed = u.startAccessingSecurityScopedResource()
+                defer { if accessed { u.stopAccessingSecurityScopedResource() } }
+                out = eng.verify(file: u, offsetStr: off, expectHex: new).jsonString
+            case "report":
+                let auth = eng.auth(d, name: name)
+                let v = auth.data["verdict"] as? String ?? "待判定"
+                out = eng.report(target: name, auth: v,
+                                 gate: "先跑 gate 定位校验点",
+                                 patch: "先跑 patch（dry-run → --apply）",
+                                 verify: "先跑 verify 校验字节")
+            default: out = "未知命令"
+            }
+            DispatchQueue.main.async {
+                self.result = out
+                self.busy = false
+                // 供在线对话页注入上下文
+                if cmd == "report" || cmd == "auth" || cmd == "gate" {
+                    Store.shared.save("last_report", ["text": out, "command": cmd])
+                }
+            }
         }
     }
 
@@ -181,5 +194,11 @@ struct BreakerView: View {
            let root = scene.windows.first?.rootViewController {
             root.present(av, animated: true)
         }
+    }
+
+    private func formatBytes(_ n: Int) -> String {
+        if n < 1024 { return "\(n) B" }
+        if n < 1024 * 1024 { return String(format: "%.1f KB", Double(n) / 1024) }
+        return String(format: "%.1f MB", Double(n) / (1024 * 1024))
     }
 }
