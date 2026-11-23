@@ -81,11 +81,11 @@ final class MCPClient {
             let r = m.range(at: 1)
             if r.location == NSNotFound { continue }
             let key = ns.substring(with: r)
-            result += ns.substring(from: last, to: m.range.location)
+            result += ns.substring(with: NSRange(location: last, length: m.range.location - last))
             result += KeychainStore.shared.get(key) ?? ""
             last = NSMaxRange(m.range)
         }
-        result += ns.substring(from: last, to: ns.length)
+        result += ns.substring(with: NSRange(location: last, length: ns.length - last))
         return result
     }
 
