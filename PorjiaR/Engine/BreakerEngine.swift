@@ -253,12 +253,12 @@ final class BreakerEngine {
         }
         let got = data[off..<(off + exp.count)]
         let matched = got == exp
-        return Envelope(ok: matched, mode: "verify", data: [
+        return Envelope(ok: matched, mode: "verify", tool: "BreakerEngine", data: [
             "offset": "0x" + String(off, radix: 16),
             "expect": exp.map { String(format: "%02X", $0) }.joined(separator: " "),
             "actual": got.map { String(format: "%02X", $0) }.joined(separator: " "),
             "matched": matched,
-        ], error: matched ? nil : "字节不匹配", code: matched ? 0 : 4, tool: "BreakerEngine")
+        ], error: matched ? nil : "字节不匹配", code: matched ? 0 : 4)
     }
 
     // MARK: - report（逆向四件套）
