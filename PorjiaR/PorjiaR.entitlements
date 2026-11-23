@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- TrollStore 安装：应用标识与 bundle id 一致即可，无需真签名 -->
+	<key>application-identifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>get-task-allow</key>
+	<false/>
+	<!-- 文件 App 共享目录访问（导入 IPA 用） -->
+	<key>com.apple.security.application-groups</key>
+	<array/>
+</dict>
+</plist>
