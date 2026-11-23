@@ -13,7 +13,7 @@ struct RulesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.gap) {
                     Card {
-                        SectionTitle(icon: "magnifyingglass", title: "V9 规范库", tint: .brand)
+                        SectionTitle(icon: "magnifyingglass", title: "V9 规范库", tint: Theme.brand)
                         TextField("搜索章节", text: $query)
                             .textFieldStyle(.roundedBorder)
                         Text("\(files.count) 章 · 随 App 内置，离线可查")
