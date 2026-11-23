@@ -34,9 +34,14 @@ jobs:
           APP=$(find "$ARCHIVE/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)
           echo "APP=$APP"
           ditto "$APP" "build/ipa/Payload/$(basename "$APP")"
+          # 确保模型路由表随包（XcodeGen resource 可能因 excludes 未复制）
+          if [ ! -f "build/ipa/Payload/$(basename "$APP")/models-dev-api.json" ]; then
+            cp PorjiaR/Resources/models-dev-api.json "build/ipa/Payload/$(basename "$APP")/"
+          fi
           # 移除 ad-hoc 签名留下的 CodeSignature（TrollStore 会自己签名）
           rm -rf "build/ipa/Payload/$(basename "$APP")/_CodeSignature"
-          (cd build/ipa && zip -q -r ../PorjiaR.ipa Payload)
+          # -UN=UTF8 强制 UTF-8 文件名标志，避免中文名乱码
+          (cd build/ipa && zip -q -r -UN=UTF8 ../PorjiaR.ipa Payload)
           ls -la build/*.ipa
 
       - name: Verify
