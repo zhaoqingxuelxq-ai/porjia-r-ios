@@ -40,8 +40,17 @@ jobs:
           fi
           # 移除 ad-hoc 签名留下的 CodeSignature（TrollStore 会自己签名）
           rm -rf "build/ipa/Payload/$(basename "$APP")/_CodeSignature"
-          # -UN=UTF8 强制 UTF-8 文件名标志，避免中文名乱码
-          (cd build/ipa && zip -q -r -UN=UTF8 ../PorjiaR.ipa Payload)
+          # 用 python3 zipfile 打包：自动为 UTF-8 中文名设置标志位（系统 zip 不支持 -UN）
+          python3 - <<'PYEOF'
+          import os, zipfile
+          out = 'build/PorjiaR.ipa'
+          with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+              for dp, dn, fs in os.walk('build/ipa/Payload'):
+                  for f in fs:
+                      full = os.path.join(dp, f)
+                      z.write(full, os.path.relpath(full, 'build/ipa'))
+          print('packed', out, os.path.getsize(out))
+          PYEOF
           ls -la build/*.ipa
 
       - name: Verify
