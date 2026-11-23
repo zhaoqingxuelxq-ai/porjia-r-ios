@@ -65,7 +65,13 @@
 		</dict>
 	</array>
 
-	<!-- 纯本地应用：不申请网络/健康/位置等权限；禁用 ATS 明文仅为将来可选端点，当前无外联 -->
+	<!-- 定位/照片权限用途：Native Offloads 子集（用户主动触发，单次读取） -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于「原生能力」页手动获取当前位置（单次，不后台采集）</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于「原生能力」页选择图片做本地 OCR 文字识别</string>
+
+	<!-- 联网版：允许 HTTPS 外部 API（模型供应商 / MCP 端点）；禁止明文 HTTP -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
