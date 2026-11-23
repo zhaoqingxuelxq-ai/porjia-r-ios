@@ -1,15 +1,22 @@
 name: Build IPA
+
+# 编译 SwiftUI 原生 App → 手动打包未签名 IPA（TrollStore 直接安装）
+# 注：不用 xcodebuild -exportArchive（那需要 teamID），直接用 ditto/zip 把 .app 打成 IPA
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
       - name: Generate project
         run: xcodegen generate
+
       - name: Archive
         run: |
           xcodebuild -scheme PorjiaR -project PorjiaR.xcodeproj \
@@ -18,17 +25,25 @@ jobs:
             -archivePath build/PorjiaR.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             clean archive
-      - name: Export IPA
+
+      - name: Pack unsigned IPA (for TrollStore)
         run: |
-          xcodebuild -exportArchive \
-            -archivePath build/PorjiaR.xcarchive \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath build/ipa \
-            CODE_SIGNING_ALLOWED=NO
+          set -euo pipefail
+          mkdir -p build/ipa/Payload
+          ARCHIVE=build/PorjiaR.xcarchive
+          APP=$(find "$ARCHIVE/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)
+          echo "APP=$APP"
+          ditto "$APP" "build/ipa/Payload/$(basename "$APP")"
+          # 移除 ad-hoc 签名留下的 CodeSignature（TrollStore 会自己签名）
+          rm -rf "build/ipa/Payload/$(basename "$APP")/_CodeSignature"
+          (cd build/ipa && zip -q -r ../PorjiaR.ipa Payload)
+          ls -la build/*.ipa
+
       - name: Verify
-        run: ls -la build/ipa
+        run: unzip -t build/PorjiaR.ipa | tail -1
+
       - uses: actions/upload-artifact@v4
         with:
           name: PorjiaR-IPA
-          path: build/ipa/*.ipa
+          path: build/PorjiaR.ipa
           retention-days: 90
