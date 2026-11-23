@@ -53,7 +53,7 @@ struct OffloadsView: View {
                     }
 
                     Card {
-                        SectionTitle(icon: "terminal", title: "输出", tint: .brand)
+                        SectionTitle(icon: "terminal", title: "输出", tint: Theme.brand)
                         ScrollView {
                             Text(result.isEmpty ? "—" : result).font(Theme.mono)
                                 .textSelection(.enabled)
