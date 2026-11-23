@@ -11,7 +11,7 @@ struct ModelsView: View {
                 VStack(alignment: .leading, spacing: Theme.gap) {
                     let st = ds.stats
                     HStack(spacing: Theme.gap) {
-                        StatCard(n: "\(st.providers)", label: "供应商", tint: .brand)
+                        StatCard(n: "\(st.providers)", label: "供应商", tint: Theme.brand)
                         StatCard(n: "\(st.models)", label: "模型", tint: .blue)
                     }
 
