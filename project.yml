@@ -1,0 +1,54 @@
+# XcodeGen 项目定义 —— 一条命令生成 PorjiaR.xcodeproj
+# 用法：xcodegen generate  （见 Scripts/build.sh）
+name: PorjiaR
+options:
+  bundleIdPrefix: top.porjia
+  deploymentTarget:
+    iOS: "15.0"
+  groupSortPosition: top
+
+settings:
+  MARKETING_VERSION: "1.0"
+  CURRENT_PROJECT_VERSION: 1
+  SWIFT_VERSION: "5.9"
+  IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+  TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
+  SUPPORTED_PLATFORMS: iphoneos
+  CODE_SIGN_STYLE: Manual
+  ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
+
+targets:
+  PorjiaR:
+    type: application
+    platform: iOS
+    bundleId: top.porjia.r
+    deploymentTarget: "15.0"
+    sources:
+      - path: PorjiaR
+        excludes:
+          - "Resources/*.json"
+    resources:
+      - path: PorjiaR/Resources/models-dev-api.json
+      - path: PorjiaR/Resources/Rules
+        type: folder                       # 作为文件夹引用，运行时按文件名读取
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: top.porjia.r
+      PRODUCT_NAME: 破甲 R
+      DISPLAY_NAME: 破甲 R
+      INFOPLIST_FILE: PorjiaR/Info.plist
+      CODE_SIGN_ENTITLEMENTS: PorjiaR/PorjiaR.entitlements
+      CODE_SIGN_IDENTITY: "-"              # ad-hoc：TrollStore 安装不依赖真实签名
+      CODE_SIGNING_ALLOWED: YES
+      LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/Frameworks"]
+      GENERATE_INFOPLIST_FILE: NO
+    scheme:
+      testTargets: []
+
+schemes:
+  PorjiaR:
+    build:
+      targets:
+        PorjiaR: [build, run, test, profile, analyze, archive]
+    archive:
+      archiveRule:
+        buildConfiguration: Release
