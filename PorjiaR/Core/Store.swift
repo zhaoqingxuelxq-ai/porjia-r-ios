@@ -25,14 +25,24 @@ final class Store {
     @discardableResult
     func save(_ name: String, _ obj: [String: Any]) -> Bool {
         guard let d = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) else { return false }
-        // 原子写：先写临时文件再替换
+        // 原子替换：用 NSFileManager.replaceItemAt，避免 remove+move 之间丢失数据
+        let dst = url(name)
         let tmp = url(name + ".tmp")
         do {
             try d.write(to: tmp, options: .atomic)
-            if fm.fileExists(atPath: url(name).path) { try fm.removeItem(at: url(name)) }
-            try fm.moveItem(at: tmp, to: url(name))
+            if fm.fileExists(atPath: dst.path) {
+                // replaceItemAt 在 iOS 上提供原子替换语义
+                _ = try fm.replaceItemAt(dst, withItemAt: tmp, backupItemName: nil,
+                                         options: [.usingNewMetadataOnly])
+            } else {
+                try fm.moveItem(at: tmp, to: dst)
+            }
             return true
-        } catch { return false }
+        } catch {
+            // 兜底：替换失败时至少保证目标文件写入
+            try? d.write(to: dst, options: .atomic)
+            return false
+        }
     }
 
     func textFileURL(_ name: String) -> URL { url(name) }
