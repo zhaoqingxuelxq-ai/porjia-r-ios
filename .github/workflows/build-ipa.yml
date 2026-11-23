@@ -1,0 +1,51 @@
+name: Build 破甲 R IPA
+
+# 推代码或手动触发 → macOS runner 编译 → 产出 IPA 供下载
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14          # Xcode 15+，arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 选择 Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成工程
+        run: xcodegen generate
+
+      - name: Archive
+        run: |
+          xcodebuild -scheme PorjiaR -project PorjiaR.xcodeproj \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/PorjiaR.xcarchive \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO \
+            clean archive
+
+      - name: 导出 IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/PorjiaR.xcarchive \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath build/ipa \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: 校验
+        run: |
+          ls -la build/ipa
+          find build/ipa -name '*.ipa' -exec unzip -t {} \; | tail -1
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: PorjiaR-IPA
+          path: build/ipa/*.ipa
+          retention-days: 90
