@@ -31,11 +31,11 @@ final class OAuthManager: NSObject {
     /// 手动粘贴的 token（降级路径）——存入 Keychain，键名 OAUTH_<provider>
     @discardableResult
     func saveManualToken(_ token: String, provider: String) -> Bool {
-        KeychainStore.shared.set(token, for: "OAUTH_\(provider.uppercased())")
+        return KeychainStore.shared.set(token, for: "OAUTH_\(provider.uppercased())")
     }
 
     func token(_ provider: String) -> String? {
-        KeychainStore.shared.get("OAUTH_\(provider.uppercased())")
+        return KeychainStore.shared.get("OAUTH_\(provider.uppercased())")
     }
 
     /// 尝试系统浏览器授权（结果通过 session 回调，需 App 支持 scheme）
