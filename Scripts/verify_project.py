@@ -127,11 +127,44 @@ def main():
     check("T24 Mach-O 解析", "LC_SYMTAB" in code or "0x2" in code and "parseSymtab" in code)
     check("T25 文件导入 fileImporter", "fileImporter" in code)
     check("T26 无浏览器依赖", "WKWebView" not in code and "SFSafariViewController" not in code and "UIWebView" not in code)
-    check("T27 无本地服务依赖", "URLSession" not in code and "http://127" not in code and "localhost" not in code)
+    # T27: 允许 URLSession 作为外网客户端（联网版），但禁止本地回环服务/浏览器依赖
+    check("T27 无本地回环服务依赖", "http://127" not in code and "localhost" not in code and "WKWebView" not in code)
 
     # T28 build.sh macOS 门禁
     sh = open(os.path.join(BASE, "Scripts", "build.sh"), encoding="utf-8").read()
     check("T28 build.sh 用 xcodegen+xcodebuild", "xcodegen generate" in sh and "xcodebuild" in sh)
+
+    # ---- 联网版新增模块校验 T29-T38 ----
+    new_files = {
+        "Core/ModelClient.swift": ["URLSession", "anthropic", "chat/completions", "stream"],
+        "Core/KeychainStore.swift": ["kSecClassGenericPassword", "kSecAttrAccessibleWhenUnlockedThisDeviceOnly", "SecItemAdd"],
+        "Core/MCPClient.swift": ["jsonrpc", "tools/list", "text/event-stream", "expand"],
+        "Core/BackgroundTasks.swift": ["best-effort", "schedule"],
+        "Core/SyncEngine.swift": ["porjia.sync/1", "ubiquityIdentityToken"],
+        "Core/NativeOffloads.swift": ["VNRecognizeTextRequest", "CLLocationManager", "clipboard"],
+        "Core/OAuthManager.swift": ["ASWebAuthenticationSession", "OAUTH_"],
+        "Features/ChatView.swift": ["KeySettingView", "attachReport", "mc.stream"],
+        "Features/MCPView.swift": ["ServerEditView", "listTools"],
+        "Features/OffloadsView.swift": ["ImagePicker", "ocr"],
+        "Features/SyncView.swift": ["SnapshotDocument", "exportToFile", "importFromFile", "OAuthManager"],
+        "Core/Theme.swift": ["struct Card", "struct Badge", "struct StatCard"],
+    }
+    for rel, needles in new_files.items():
+        p = os.path.join(BASE, "PorjiaR", rel)
+        if not os.path.exists(p):
+            check("新增模块 " + rel, False, "文件缺失")
+            continue
+        c = open(p, encoding="utf-8").read()
+        miss = [n for n in needles if n not in c]
+        check("新增模块 " + rel, not miss, miss)
+        # 括号配对
+        check("  括号配对 " + rel, c.count("{") == c.count("}") and c.count("(") == c.count(")"))
+
+    # URL scheme
+    info = open(os.path.join(BASE, "PorjiaR", "Info.plist"), encoding="utf-8").read()
+    check("T37 URL scheme porjiar", "porjiar" in info)
+    root = open(os.path.join(BASE, "PorjiaR", "Features", "RootView.swift"), encoding="utf-8").read()
+    check("T38 DeepLink 路由已接入", "DeepLinkRouter" in root and "router.page" in root)
 
     print("=" * 52)
     print("结果: %d/%d PASS" % (len(PASS), len(PASS) + len(FAIL)))
