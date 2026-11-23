@@ -19,8 +19,10 @@ struct ConfigView: View {
                     }
                 }
                 .onDelete { idx in
-                    for i in idx {
-                        if let id = entries[i]["id"] as? String, entries[i]["builtin"] as? Bool != true {
+                    // 倒序删除，避免前面删除导致后面索引越界
+                    for i in idx.sorted(by: >) {
+                        guard i < entries.count else { continue }
+                        if entries[i]["builtin"] as? Bool != true {
                             entries.remove(at: i)
                         }
                     }
