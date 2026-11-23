@@ -26,6 +26,6 @@ final class BackgroundTasks {
 
     /// 上次后台调度时间
     func lastRun() -> String? {
-        Store.shared.load("bgtask_state", default: [:])["scheduledAt"] as? String
+        return Store.shared.load("bgtask_state", default: [:])["scheduledAt"] as? String
     }
 }
