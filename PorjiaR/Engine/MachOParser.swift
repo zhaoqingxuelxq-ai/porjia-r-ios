@@ -251,10 +251,10 @@ enum Inflate {
         var dst = [UInt8](repeating: 0, count: dstCap)
         let got = dst.withUnsafeMutableBytes { dstBuf -> Int in
             src.withUnsafeBytes { srcBuf -> Int in
-                // ZIP 条目用的是 raw deflate（无 zlib 头），对应 COMPRESSION_DEFLATE
+                // ZIP 条目用的是 raw deflate（无 zlib 头），Swift 导入的常量名为 compression_deflate
                 compression_decode_buffer(dstBuf.baseAddress!, dstCap,
                                           srcBuf.baseAddress!, src.count,
-                                          nil, COMPRESSION_DEFLATE)
+                                          nil, compression_deflate)
             }
         }
         guard got > 0 else { return nil }
